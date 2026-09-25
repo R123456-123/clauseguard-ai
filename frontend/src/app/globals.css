@@ -1,0 +1,130 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap");
+
+/* ------------------------------------------------------------------ */
+/* Base layer overrides                                                */
+/* ------------------------------------------------------------------ */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    @apply box-border;
+  }
+
+  html {
+    @apply scroll-smooth antialiased;
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-surface-950 text-surface-100 font-sans leading-relaxed;
+    min-height: 100dvh;
+  }
+
+  ::selection {
+    @apply bg-brand-500/30 text-white;
+  }
+
+  /* Focus-visible ring for keyboard accessibility */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-brand-400 rounded-sm;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Component layer — reusable patterns                                 */
+/* ------------------------------------------------------------------ */
+@layer components {
+  /* Glass-morphism card */
+  .glass-card {
+    @apply relative overflow-hidden rounded-2xl
+           border border-white/[0.06]
+           bg-white/[0.03] backdrop-blur-md
+           shadow-[0_8px_32px_rgba(0,0,0,0.25)]
+           transition-all duration-300;
+  }
+
+  .glass-card:hover {
+    @apply border-white/[0.12] shadow-[0_12px_48px_rgba(0,0,0,0.35)];
+  }
+
+  /* Primary gradient button */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2
+           rounded-xl px-6 py-3
+           bg-gradient-to-r from-brand-600 to-brand-500
+           text-white font-semibold text-sm
+           shadow-lg shadow-brand-600/25
+           transition-all duration-200
+           hover:shadow-xl hover:shadow-brand-500/30
+           hover:brightness-110
+           active:scale-[0.97]
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-lg;
+  }
+
+  /* Skeleton loading shimmer */
+  .skeleton {
+    @apply relative overflow-hidden rounded-lg bg-surface-800;
+  }
+
+  .skeleton::after {
+    content: "";
+    @apply absolute inset-0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.04),
+      transparent
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+
+  /* Risk level badges */
+  .badge-low {
+    @apply inline-flex items-center rounded-full px-3 py-1
+           text-xs font-semibold
+           bg-emerald-500/15 text-emerald-400
+           ring-1 ring-emerald-500/25;
+  }
+
+  .badge-medium {
+    @apply inline-flex items-center rounded-full px-3 py-1
+           text-xs font-semibold
+           bg-amber-500/15 text-amber-400
+           ring-1 ring-amber-500/25;
+  }
+
+  .badge-high {
+    @apply inline-flex items-center rounded-full px-3 py-1
+           text-xs font-semibold
+           bg-red-500/15 text-red-400
+           ring-1 ring-red-500/25;
+  }
+
+  .badge-critical {
+    @apply inline-flex items-center rounded-full px-3 py-1
+           text-xs font-semibold
+           bg-red-600/20 text-red-300
+           ring-1 ring-red-500/40
+           animate-pulse-soft;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Utility layer                                                       */
+/* ------------------------------------------------------------------ */
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent
+           bg-gradient-to-r from-brand-300 via-brand-400 to-cyan-400;
+  }
+
+  .glow-brand {
+    box-shadow: 0 0 40px rgba(51, 130, 252, 0.15),
+                0 0 80px rgba(51, 130, 252, 0.05);
+  }
+}
