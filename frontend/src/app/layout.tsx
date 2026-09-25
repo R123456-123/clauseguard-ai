@@ -2,17 +2,17 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ClauseGuard AI — Legal Contract Risk Analysis",
+  title: "ClauseGuard AI — Legal Document Assistant",
   description:
-    "AI-powered legal contract risk analysis tool. Upload contracts, identify risky clauses, " +
-    "and generate negotiation preparation packs using Google Gemini AI.",
+    "AI-powered legal document assistant for contract risk review, clause explanations, and document Q&A.",
   keywords: [
-    "legal",
-    "contract",
-    "risk analysis",
-    "AI",
-    "clause extraction",
-    "negotiation",
+    "legal AI",
+    "contract review",
+    "document assistant",
+    "legal risk analysis",
+    "contract Q&A",
+    "clause explanation",
+    "negotiation prep",
   ],
   robots: "index, follow",
 };

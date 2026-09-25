@@ -1,159 +1,149 @@
 # ClauseGuard AI ⚖️🛡️
 
-**AI-powered legal contract risk analysis tool** — Instantly identify risky clauses, assess contract exposure, and generate negotiation preparation packs using Google Gemini AI.
+ClauseGuard AI is an AI-powered legal document assistant designed to help users understand, review, and navigate contracts more easily. The platform simplifies complex clauses, highlights legal risks, answers user questions using the uploaded contract as context, and supports negotiation preparation — while clearly reinforcing that it is informational support rather than formal legal advice.
 
----
+## Challenge vertical
 
-## Problem Statement
+Chosen vertical: Legal Assistance & Access
 
-Legal contracts are dense, complex documents that often contain clauses with hidden risks — unfavorable termination terms, broad indemnification requirements, aggressive non-compete provisions, or ambiguous liability caps. Small businesses, freelancers, and individuals frequently sign contracts without fully understanding these risks, leading to costly legal disputes.
+This project addresses the challenge by making legal information more approachable for everyday users. It helps individuals and small businesses:
 
-**ClauseGuard AI** solves this by providing instant, AI-powered contract risk analysis that:
+- simplify legal language
+- identify risky clauses
+- answer contract-related questions in plain English
+- understand obligations, risks, and negotiation priorities
+- prepare better questions for a lawyer
 
-- **Extracts and classifies** every significant clause in a contract
-- **Assigns risk levels** (Low → Critical) with clear explanations
-- **Generates actionable recommendations** for each risky clause
-- **Produces negotiation prep packs** with alternative language suggestions
-- **Scrubs PII** before any data reaches external AI services
+## Problem being solved
 
-> ⚠️ **Disclaimer:** ClauseGuard AI provides informational assistance only and does not constitute formal legal advice. Always consult a qualified attorney.
+Legal documents are often dense, difficult to interpret, and full of hidden risks. Small businesses, freelancers, and individuals may not have the time or expertise to review contracts thoroughly before signing. ClauseGuard AI bridges that gap by turning a contract into a structured, understandable, and actionable review summary.
 
----
+## Approach and logic
 
-## Architecture
+The solution combines:
 
-```
-┌─────────────────────┐     HTTP/JSON     ┌──────────────────────────┐
-│   Next.js Frontend  │ ◄──────────────► │   FastAPI Backend        │
-│   (TypeScript +     │                   │                          │
-│    Tailwind CSS)    │                   │  ┌────────────────────┐  │
-│                     │                   │  │  PII Scrubber      │  │
-│  • FileUpload       │                   │  │  (Regex Redaction) │  │
-│  • RiskDashboard    │                   │  └────────┬───────────┘  │
-│  • Loading States   │                   │           │              │
-└─────────────────────┘                   │  ┌────────▼───────────┐  │
-                                          │  │  Gemini Service    │  │
-                                          │  │  (gemini-1.5-flash)│  │
-                                          │  └────────┬───────────┘  │
-                                          │           │              │
-                                          │  ┌────────▼───────────┐  │
-                                          │  │  Pydantic Schemas  │  │
-                                          │  │  (Strict Typing)   │  │
-                                          │  └────────────────────┘  │
-                                          └──────────────────────────┘
-                                                      │
-                                                      ▼
-                                          ┌──────────────────────────┐
-                                          │   Google Gemini API      │
-                                          │   (gemini-1.5-flash)     │
-                                          └──────────────────────────┘
-```
+- AI-powered contract analysis
+- structured output validation
+- PII redaction for safer handling of sensitive information
+- contract-grounded Q&A
+- negotiation guidance and next-step recommendations
 
-### Data Flow
+The system works in a user-friendly flow:
 
-1. User uploads contract text via the **Next.js** frontend
-2. Frontend sends `POST` to FastAPI backend (`/api/v1/upload-contract`)
-3. **PII Scrubber** redacts emails, phone numbers, and SSN-format data
-4. Sanitized text is sent to **Google Gemini AI** with structured JSON prompts
-5. Gemini returns clause-by-clause risk analysis
-6. Backend validates response via **Pydantic** schemas, appends legal disclaimer
-7. Frontend renders interactive **Risk Dashboard** with color-coded risk levels
+1. The user uploads or pastes a contract.
+2. The backend scrubbed personal data before sending to the model.
+3. The AI extracts key clauses and ranks risk levels.
+4. The user can ask direct questions such as:
+   - What are the key risks in this contract?
+   - Does this clause give the company too much control?
+   - What should I negotiate before signing?
+5. The app returns plain-English answers grounded in the contract text.
+6. A legal disclaimer is appended to every response to reinforce safe usage.
 
----
+## Key features
 
-## GenAI Integration Mapping
+- Contract risk analysis with clause-by-clause breakdown
+- Overall risk classification: low, medium, high, critical
+- Plain-English explanations for each risky clause
+- Negotiation prep pack with recommended actions
+- Legal Q&A assistant using the uploaded document as context
+- PII redaction for email, phone, and SSN-like patterns
+- Responsive Next.js interface for upload and paste workflows
 
-| Feature                  | GenAI Component          | Purpose                                          |
-| ------------------------ | ------------------------ | ------------------------------------------------ |
-| Contract Risk Analysis   | Gemini 1.5 Flash         | Extract clauses, classify risk levels, explain risks |
-| Prep Pack Generation     | Gemini 1.5 Flash         | Generate negotiation points & alternative language |
-| Structured Output        | `response_mime_type=json` | Enforce JSON schema compliance from AI responses |
-| PII Protection           | Regex Scrubber (pre-AI)  | Remove personal data before API transmission     |
-| Safety Guardrails        | Pydantic Validation      | Validate AI output structure, enforce disclaimer |
+## How the solution works
 
----
+### Frontend
 
-## Tech Stack
+Built with Next.js and TypeScript, the frontend provides:
 
-| Layer       | Technology                        |
-| ----------- | --------------------------------- |
-| Frontend    | Next.js 14, TypeScript, Tailwind CSS |
-| Backend     | Python 3.11+, FastAPI, Pydantic v2 |
-| AI Engine   | Google Gemini API (gemini-1.5-flash) |
-| Testing     | Pytest, FastAPI TestClient         |
-| Security    | PII Scrubbing, Input Validation    |
+- file upload or direct text paste
+- loading and analysis states
+- risk dashboard visualization
+- legal assistant question interface
 
----
+### Backend
 
-## Run Instructions
+Built with FastAPI, the backend exposes API routes for:
 
-### Prerequisites
+- contract risk analysis
+- negotiation prep generation
+- legal question answering
+- health checks
 
-- Python 3.11+
-- Node.js 18+
-- Google Gemini API Key ([Get one here](https://aistudio.google.com/app/apikey))
+### AI integration
 
-### Backend Setup
+Google Gemini is used to generate structured outputs from contract text. The system prompts the model to return JSON and then validates the results using Pydantic models. This keeps the answers consistent and reduces malformed outputs.
+
+### Safety and responsible design
+
+The application is intentionally designed to provide informational assistance instead of legal advice. It includes:
+
+- PII scrubbing before AI calls
+- strong schema validation
+- mandatory legal disclaimer in responses
+- emphasis on user understanding and preparation for professional legal review
+
+## Assumptions
+
+- The uploaded document is a legal or commercial agreement in text form.
+- Users are seeking general clarification, negotiation insight, and risk awareness, not final legal counsel.
+- The assistant may not detect every jurisdiction-specific legal nuance.
+- Legal interpretation should still be reviewed by a qualified attorney when needed.
+
+## Tech stack
+
+- Frontend: Next.js, TypeScript, Tailwind CSS
+- Backend: FastAPI, Python, Pydantic
+- AI: Google Gemini API
+- Testing: Pytest, FastAPI TestClient
+- Security: PII redaction before external AI calls
+
+## Project structure
 
 ```bash
-# Navigate to backend
+backend/
+  app/
+    api/
+    schemas/
+    services/
+    main.py
+  tests/
+frontend/
+  src/
+```
+
+## Run locally
+
+### Backend
+
+```bash
 cd backend
-
-# Create virtual environment
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
+source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-
-# Set environment variable
-cp .env.example .env
-# Edit .env and add your GEMINI_API_KEY
-
-# Run the server
-uvicorn app.main:app --reload --port 8000
+python -m uvicorn app.main:app --reload --port 8000
 ```
 
-### Frontend Setup
+### Frontend
 
 ```bash
-# Navigate to frontend
 cd frontend
-
-# Install dependencies
 npm install
-
-# Run development server
 npm run dev
 ```
 
-### Running Tests
+### Environment variable
 
-```bash
-cd backend
-pytest tests/ -v --tb=short
-```
-
-### Environment Variables
-
-Create a `backend/.env` file:
+Create a `.env` file inside the backend directory with:
 
 ```env
-GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_API_KEY=your_api_key_here
 ```
 
----
+## Important note
 
-## API Endpoints
-
-| Method | Endpoint                      | Description                          |
-| ------ | ----------------------------- | ------------------------------------ |
-| POST   | `/api/v1/upload-contract`     | Analyze contract for legal risks     |
-| POST   | `/api/v1/generate-prep-pack`  | Generate negotiation preparation pack |
-| GET    | `/health`                     | Health check endpoint                |
-
----
+This project provides informational assistance and risk awareness support. It does not replace professional legal advice. Users should consult a qualified legal professional for final legal interpretation and advice.
 
 ## License
 
-MIT License — See [LICENSE](./LICENSE) for details.
+MIT License.

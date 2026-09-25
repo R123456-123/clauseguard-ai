@@ -138,6 +138,41 @@ class PrepPackResponse(BaseModel):
     )
 
 
+class LegalAssistantRequest(BaseModel):
+    """Payload for asking a grounded question about a contract."""
+
+    contract_text: str = Field(
+        ...,
+        min_length=50,
+        max_length=100_000,
+        description="Full text content of the contract to analyse",
+    )
+    question: str = Field(
+        ...,
+        min_length=3,
+        max_length=2000,
+        description="User question about the legal contract or clauses",
+    )
+
+
+class LegalAssistantResponse(BaseModel):
+    """Grounded legal answer based on the provided contract text."""
+
+    answer: str = Field(
+        ...,
+        min_length=1,
+        description="Plain-English legal answer grounded in the contract text",
+    )
+    key_points: list[str] = Field(
+        default_factory=list,
+        description="Key takeaways or legal considerations from the answer",
+    )
+    disclaimer: str = Field(
+        default=LEGAL_DISCLAIMER,
+        description="Mandatory legal disclaimer — always included",
+    )
+
+
 class ErrorResponse(BaseModel):
     """Standardised error payload returned by the API."""
 

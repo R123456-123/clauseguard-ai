@@ -34,10 +34,21 @@ export interface PrepPackResponse {
   disclaimer: string;
 }
 
+export interface LegalAssistantResponse {
+  answer: string;
+  key_points: string[];
+  disclaimer: string;
+}
+
 /** Request payload sent to both endpoints. */
 export interface DocumentRequest {
   contract_text: string;
   party_name?: string;
+}
+
+export interface LegalAssistantRequest {
+  contract_text: string;
+  question: string;
 }
 
 /** Maps risk levels to human-readable labels. */

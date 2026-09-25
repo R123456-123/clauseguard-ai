@@ -15,6 +15,8 @@ from app.main import app
 from app.schemas.legal_schemas import (
     LEGAL_DISCLAIMER,
     ClauseItem,
+    LegalAssistantResponse,
+    PrepPackResponse,
     RiskLevel,
     RiskResponse,
 )
@@ -226,6 +228,16 @@ _MOCK_PREP_PACK = PrepPackResponse(
     disclaimer=LEGAL_DISCLAIMER,
 )
 
+_MOCK_LEGAL_ASSISTANT_RESPONSE = LegalAssistantResponse(
+    answer="The contract allows termination with 7 days' notice and includes a broad non-compete. This creates a risk for your operational flexibility.",
+    key_points=[
+        "Termination can happen with 7 days' notice.",
+        "The non-compete lasts five years within a 200-mile radius.",
+    ],
+    disclaimer=LEGAL_DISCLAIMER,
+)
+
+
 class TestGeneratePrepPack:
     """Integration tests for POST /api/v1/generate-prep-pack."""
 
@@ -267,3 +279,41 @@ class TestGeneratePrepPack:
             json={"contract_text": _SAMPLE_CONTRACT},
         )
         assert response.status_code == 500
+
+
+class TestAskLegalQuestion:
+    """Integration tests for POST /api/v1/ask-legal-question."""
+
+    @patch(
+        "app.api.routes.answer_legal_question",
+        new_callable=AsyncMock,
+        return_value=_MOCK_LEGAL_ASSISTANT_RESPONSE,
+    )
+    def test_successful_question_answer(self, mock_answer: AsyncMock) -> None:
+        """Valid question requests should return a grounded legal answer."""
+        response = client.post(
+            "/api/v1/ask-legal-question",
+            json={
+                "contract_text": _SAMPLE_CONTRACT,
+                "question": "What are the biggest risks in this contract?",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "answer" in data
+        assert "key_points" in data
+        assert data["disclaimer"] == LEGAL_DISCLAIMER
+        mock_answer.assert_called_once_with(
+            _SAMPLE_CONTRACT,
+            "What are the biggest risks in this contract?",
+        )
+
+    def test_rejects_missing_question(self) -> None:
+        """Missing questions should return 422 validation error."""
+        response = client.post(
+            "/api/v1/ask-legal-question",
+            json={"contract_text": _SAMPLE_CONTRACT},
+        )
+
+        assert response.status_code == 422

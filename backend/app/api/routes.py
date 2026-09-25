@@ -10,12 +10,15 @@ from fastapi import APIRouter, HTTPException
 from app.schemas.legal_schemas import (
     DocumentRequest,
     ErrorResponse,
+    LegalAssistantRequest,
+    LegalAssistantResponse,
     PrepPackResponse,
     RiskResponse,
 )
 from app.services.gemini_service import (
     GeminiServiceError,
     analyze_contract,
+    answer_legal_question,
     generate_prep_pack,
 )
 
@@ -74,4 +77,32 @@ async def generate_preparation_pack(
         raise HTTPException(
             status_code=500,
             detail=f"Unexpected error during prep-pack generation: {exc}",
+        ) from exc
+
+
+@router.post(
+    "/ask-legal-question",
+    response_model=LegalAssistantResponse,
+    responses={
+        400: {"model": ErrorResponse, "description": "Validation error"},
+        500: {"model": ErrorResponse, "description": "AI service failure"},
+    },
+    summary="Answer a legal question about a contract",
+    description=(
+        "Uses the uploaded contract text as context and answers the user's legal "
+        "question in plain English while staying within informational guidance."
+    ),
+)
+async def ask_legal_question(
+    request: LegalAssistantRequest,
+) -> LegalAssistantResponse:
+    """Answer a user question grounded in their contract text."""
+    try:
+        return await answer_legal_question(request.contract_text, request.question)
+    except GeminiServiceError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error during legal question answering: {exc}",
         ) from exc

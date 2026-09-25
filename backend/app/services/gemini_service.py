@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from app.schemas.legal_schemas import (
     LEGAL_DISCLAIMER,
     ClauseItem,
+    LegalAssistantResponse,
     PrepPackResponse,
     RiskLevel,
     RiskResponse,
@@ -119,6 +120,26 @@ def _build_prep_pack_prompt(contract_text: str) -> str:
     )
 
 
+def _build_legal_question_prompt(contract_text: str, question: str) -> str:
+    """Return the structured prompt for contract-grounded legal Q&A."""
+    return (
+        "You are a careful legal document assistant. Answer the user's question using the "
+        "provided contract text as the main source of truth. Do not invent terms, rights, "
+        "or obligations that are not in the contract. Keep the answer practical and plain-English, "
+        "and explain the legal impact clearly.\n\n"
+        "Return your answer as JSON with this exact structure:\n"
+        "{\n"
+        '  "answer": "clear response in 2-5 sentences",\n'
+        '  "key_points": ["main takeaway 1", "main takeaway 2"]\n'
+        "}\n\n"
+        "USER QUESTION:\n"
+        f"{question}\n\n"
+        "CONTRACT TEXT:\n"
+        f"{contract_text}\n\n"
+        "If the contract is unclear or incomplete, say so briefly and suggest what a user may want to verify with a lawyer."
+    )
+
+
 def _parse_json_response(raw_text: str) -> dict[str, Any]:
     """Parse the Gemini response text into a Python dict.
 
@@ -217,5 +238,30 @@ async def generate_prep_pack(contract_text: str) -> PrepPackResponse:
         negotiation_points=raw_data.get("negotiation_points", []),
         alternative_language=raw_data.get("alternative_language", []),
         summary=raw_data.get("summary", "Preparation pack generated."),
+        disclaimer=LEGAL_DISCLAIMER,
+    )
+
+
+async def answer_legal_question(
+    contract_text: str,
+    question: str,
+) -> LegalAssistantResponse:
+    """Answer a user's legal question grounded in the contract text."""
+    scrub_result = scrub_pii(contract_text)
+
+    model = _get_model()
+    prompt = _build_legal_question_prompt(scrub_result.cleaned_text, question)
+
+    try:
+        response = await model.generate_content_async(prompt)
+        raw_data = _parse_json_response(response.text)
+    except GeminiServiceError:
+        raise
+    except Exception as exc:
+        raise GeminiServiceError(f"Gemini API call failed: {exc}") from exc
+
+    return LegalAssistantResponse(
+        answer=raw_data.get("answer", "I could not confidently answer from the contract text."),
+        key_points=raw_data.get("key_points", []),
         disclaimer=LEGAL_DISCLAIMER,
     )
