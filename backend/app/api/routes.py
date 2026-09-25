@@ -1,9 +1,11 @@
 """API route definitions for ClauseGuard AI.
 
-Exposes two POST endpoints for contract analysis and negotiation prep-pack
-generation, both returning structured Pydantic responses with mandatory
-legal disclaimers.
+Exposes POST endpoints for contract analysis, negotiation prep-pack generation,
+and contract-grounded legal questions. Each returns a structured Pydantic
+response with a mandatory legal disclaimer.
 """
+
+import logging
 
 from fastapi import APIRouter, HTTPException
 
@@ -21,8 +23,10 @@ from app.services.gemini_service import (
     answer_legal_question,
     generate_prep_pack,
 )
+from app.services.context_cache import get as get_cached_context
 
 router: APIRouter = APIRouter(tags=["contracts"])
+logger = logging.getLogger(__name__)
 
 
 @router.post(
@@ -44,11 +48,16 @@ async def upload_contract(request: DocumentRequest) -> RiskResponse:
     try:
         return await analyze_contract(request.contract_text)
     except GeminiServiceError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.warning("Contract analysis service failure: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail="The contract analysis service is temporarily unavailable.",
+        ) from exc
     except Exception as exc:
+        logger.exception("Unexpected contract analysis failure")
         raise HTTPException(
             status_code=500,
-            detail=f"Unexpected error during contract analysis: {exc}",
+            detail="An unexpected error occurred during contract analysis.",
         ) from exc
 
 
@@ -72,11 +81,16 @@ async def generate_preparation_pack(
     try:
         return await generate_prep_pack(request.contract_text)
     except GeminiServiceError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.warning("Prep-pack service failure: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail="The preparation service is temporarily unavailable.",
+        ) from exc
     except Exception as exc:
+        logger.exception("Unexpected prep-pack failure")
         raise HTTPException(
             status_code=500,
-            detail=f"Unexpected error during prep-pack generation: {exc}",
+            detail="An unexpected error occurred during preparation generation.",
         ) from exc
 
 
@@ -98,11 +112,24 @@ async def ask_legal_question(
 ) -> LegalAssistantResponse:
     """Answer a user question grounded in their contract text."""
     try:
-        return await answer_legal_question(request.contract_text, request.question)
+        contract_text = request.contract_text
+        if request.document_id:
+            contract_text = get_cached_context(request.document_id)
+            if contract_text is None:
+                raise HTTPException(
+                    status_code=410,
+                    detail="The cached contract context has expired. Please analyse the contract again.",
+                )
+        return await answer_legal_question(contract_text or "", request.question)
     except GeminiServiceError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.warning("Legal assistant service failure: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail="The legal assistant service is temporarily unavailable.",
+        ) from exc
     except Exception as exc:
+        logger.exception("Unexpected legal assistant failure")
         raise HTTPException(
             status_code=500,
-            detail=f"Unexpected error during legal question answering: {exc}",
+            detail="An unexpected error occurred while answering the question.",
         ) from exc

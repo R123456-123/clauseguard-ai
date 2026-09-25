@@ -6,6 +6,7 @@ directly tests the PII scrubber as a unit.
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -21,6 +22,13 @@ from app.schemas.legal_schemas import (
     RiskResponse,
 )
 from app.services.pii_scrubber import scrub_pii
+from app.services.context_cache import clear as clear_context_cache, get as get_cached_context, store
+from app.services.gemini_service import (
+    GeminiServiceError,
+    _parse_json_response,
+    _validate_response,
+    analyze_contract,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -109,7 +117,24 @@ class TestPIIScrubber:
 
         assert "[SSN_REDACTED]" in result.cleaned_text
         assert "123-45-6789" not in result.cleaned_text
-        assert result.redaction_count >= 1
+
+
+class TestContextCache:
+    """Verify scrubbed contract context is bounded and expires by ID."""
+
+    def setup_method(self) -> None:
+        clear_context_cache()
+
+    def teardown_method(self) -> None:
+        clear_context_cache()
+
+    def test_round_trips_scrubbed_context(self) -> None:
+        """A stored context should be retrievable without storing raw PII."""
+        document_id = store("Agreement with [EMAIL_REDACTED]")
+
+        assert len(document_id) == 24
+        assert get_cached_context(document_id) == "Agreement with [EMAIL_REDACTED]"
+        assert get_cached_context("invalid-document-id") is None
 
     def test_scrubs_multiple_pii_types(self) -> None:
         """Multiple PII types in one text should all be redacted."""
@@ -131,6 +156,66 @@ class TestPIIScrubber:
 
         assert result.cleaned_text == text
         assert result.redaction_count == 0
+
+    def test_redaction_count_matches_replacements(self) -> None:
+        """Each supported PII occurrence should increment the count once."""
+        result = scrub_pii("a@example.com, b@example.com, 123-45-6789")
+
+        assert result.redaction_count == 3
+        assert "@example.com" not in result.cleaned_text
+        assert "123-45-6789" not in result.cleaned_text
+
+
+# ===========================================================================
+# 2b. Structured AI response validation
+# ===========================================================================
+
+
+class TestGeminiResponseValidation:
+    """Verify malformed model output is rejected before reaching the API."""
+
+    def test_rejects_non_object_json(self) -> None:
+        """A JSON array is not a valid top-level Gemini response."""
+        with pytest.raises(GeminiServiceError, match="unsupported format"):
+            _parse_json_response("[]")
+
+    def test_rejects_invalid_json(self) -> None:
+        """Malformed JSON should become the service's controlled error type."""
+        with pytest.raises(GeminiServiceError, match="non-JSON"):
+            _parse_json_response("not-json")
+
+    def test_rejects_incomplete_risk_response(self) -> None:
+        """Required risk fields must be present in model output."""
+        with pytest.raises(GeminiServiceError, match="incomplete"):
+            _validate_response(
+                RiskResponse,
+                {"clauses": [], "overall_risk_level": "high"},
+            )
+
+    @patch(
+        "app.services.gemini_service._generate_json",
+        new_callable=AsyncMock,
+        return_value={
+            "clauses": [],
+            "overall_risk_level": "low",
+            "summary": "No significant risks found.",
+        },
+    )
+    def test_service_scrubs_pii_before_prompt_generation(
+        self,
+        mock_generate: AsyncMock,
+    ) -> None:
+        """The service should never send raw email or SSN data to Gemini."""
+        contract = f"This agreement is valid. Contact jane@example.com. SSN 123-45-6789."
+
+        result = asyncio.run(analyze_contract(contract))
+
+        assert result.overall_risk_level == RiskLevel.LOW
+        prompt = mock_generate.call_args.args[0]
+        assert "jane@example.com" not in prompt
+        assert "123-45-6789" not in prompt
+        assert "[EMAIL_REDACTED]" in prompt
+        assert "[SSN_REDACTED]" in prompt
 
 
 # ===========================================================================
@@ -206,6 +291,24 @@ class TestUploadContract:
         assert response.status_code == 500
         data = response.json()
         assert "detail" in data
+
+    @patch(
+        "app.api.routes.analyze_contract",
+        new_callable=AsyncMock,
+        side_effect=GeminiServiceError("provider secret should not leak"),
+    )
+    def test_hides_provider_error_details(self, mock_analyze: AsyncMock) -> None:
+        """Provider failures should return a safe message and gateway status."""
+        response = client.post(
+            "/api/v1/upload-contract",
+            json={"contract_text": _SAMPLE_CONTRACT},
+        )
+
+        assert response.status_code == 502
+        assert response.json()["detail"] == (
+            "The contract analysis service is temporarily unavailable."
+        )
+        assert "provider secret" not in response.text
 
 
 # ===========================================================================
@@ -317,3 +420,46 @@ class TestAskLegalQuestion:
         )
 
         assert response.status_code == 422
+
+    def test_rejects_question_over_limit(self) -> None:
+        """Very large questions should be rejected before an AI request."""
+        response = client.post(
+            "/api/v1/ask-legal-question",
+            json={
+                "contract_text": _SAMPLE_CONTRACT,
+                "question": "x" * 2001,
+            },
+        )
+
+        assert response.status_code == 422
+
+
+class TestCorsPolicy:
+    """Verify only configured frontend origins receive CORS permission."""
+
+    def test_allows_local_frontend_origin(self) -> None:
+        """The local development frontend should be allowed."""
+        response = client.options(
+            "/api/v1/upload-contract",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.headers["access-control-allow-origin"] == (
+            "http://localhost:3000"
+        )
+
+    def test_rejects_unknown_frontend_origin(self) -> None:
+        """Untrusted origins should not receive an allow-origin header."""
+        response = client.options(
+            "/api/v1/upload-contract",
+            headers={
+                "Origin": "https://malicious.example",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+
+        assert "access-control-allow-origin" not in response.headers

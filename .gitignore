@@ -45,6 +45,7 @@ htmlcov/
 .pytest_cache/
 coverage/
 lcov-report/
+frontend/test-results/
 
 # Build artifacts
 *.whl

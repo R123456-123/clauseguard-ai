@@ -8,20 +8,25 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any
+import asyncio
+import functools
+from typing import Any, TypeVar
 
 import google.generativeai as genai
 from dotenv import load_dotenv
+from pydantic import BaseModel, ValidationError
 
 from app.schemas.legal_schemas import (
+    GeminiAssistantResponse,
+    GeminiPrepPackResponse,
+    GeminiRiskResponse,
     LEGAL_DISCLAIMER,
-    ClauseItem,
     LegalAssistantResponse,
     PrepPackResponse,
-    RiskLevel,
     RiskResponse,
 )
 from app.services.pii_scrubber import scrub_pii
+from app.services.context_cache import store
 
 load_dotenv()
 
@@ -34,11 +39,13 @@ class GeminiServiceError(Exception):
     """Raised when the Gemini API call or response parsing fails."""
 
 
+_GEMINI_TIMEOUT_SECONDS = 45
+ResponseModel = TypeVar("ResponseModel", bound=BaseModel)
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-import functools
 
 @functools.lru_cache(maxsize=1)
 def _get_model() -> genai.GenerativeModel:
@@ -147,12 +154,45 @@ def _parse_json_response(raw_text: str) -> dict[str, Any]:
         GeminiServiceError: If the text is not valid JSON.
     """
     try:
-        data: dict[str, Any] = json.loads(raw_text)
-        return data
+        data = json.loads(raw_text)
     except json.JSONDecodeError as exc:
         raise GeminiServiceError(
             f"Gemini returned non-JSON output: {exc}"
         ) from exc
+
+    if not isinstance(data, dict):
+        raise GeminiServiceError("Gemini returned JSON in an unsupported format.")
+
+    return data
+
+
+def _validate_response(
+    response_model: type[ResponseModel],
+    data: dict[str, Any],
+) -> ResponseModel:
+    """Validate the complete Gemini payload before mapping it to an API response."""
+    try:
+        return response_model.model_validate(data)
+    except ValidationError as exc:
+        raise GeminiServiceError(
+            "Gemini returned incomplete or invalid structured data."
+        ) from exc
+
+
+async def _generate_json(prompt: str) -> dict[str, Any]:
+    """Generate one bounded, structured response from Gemini."""
+    try:
+        response = await asyncio.wait_for(
+            _get_model().generate_content_async(prompt),
+            timeout=_GEMINI_TIMEOUT_SECONDS,
+        )
+        return _parse_json_response(response.text)
+    except asyncio.TimeoutError as exc:
+        raise GeminiServiceError("Gemini request timed out.") from exc
+    except GeminiServiceError:
+        raise
+    except Exception as exc:
+        raise GeminiServiceError(f"Gemini API call failed: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -178,29 +218,21 @@ async def analyze_contract(contract_text: str) -> RiskResponse:
     """
     # 1 — PII scrubbing
     scrub_result = scrub_pii(contract_text)
+    document_id = store(scrub_result.cleaned_text)
 
     # 2 — Gemini API call
-    model = _get_model()
     prompt = _build_analysis_prompt(scrub_result.cleaned_text)
-
-    try:
-        response = await model.generate_content_async(prompt)
-        raw_data = _parse_json_response(response.text)
-    except GeminiServiceError:
-        raise
-    except Exception as exc:
-        raise GeminiServiceError(f"Gemini API call failed: {exc}") from exc
-
-    # 3 — Validate into Pydantic models
-    clauses: list[ClauseItem] = [
-        ClauseItem(**item) for item in raw_data.get("clauses", [])
-    ]
+    raw_data = _validate_response(
+        GeminiRiskResponse,
+        await _generate_json(prompt),
+    )
 
     return RiskResponse(
-        clauses=clauses,
-        overall_risk_level=RiskLevel(raw_data.get("overall_risk_level", "medium")),
-        summary=raw_data.get("summary", "Analysis complete."),
+        clauses=raw_data.clauses,
+        overall_risk_level=raw_data.overall_risk_level,
+        summary=raw_data.summary,
         disclaimer=LEGAL_DISCLAIMER,
+        document_id=document_id,
     )
 
 
@@ -218,26 +250,17 @@ async def generate_prep_pack(contract_text: str) -> PrepPackResponse:
     """
     scrub_result = scrub_pii(contract_text)
 
-    model = _get_model()
     prompt = _build_prep_pack_prompt(scrub_result.cleaned_text)
-
-    try:
-        response = await model.generate_content_async(prompt)
-        raw_data = _parse_json_response(response.text)
-    except GeminiServiceError:
-        raise
-    except Exception as exc:
-        raise GeminiServiceError(f"Gemini API call failed: {exc}") from exc
-
-    key_risks: list[ClauseItem] = [
-        ClauseItem(**item) for item in raw_data.get("key_risks", [])
-    ]
+    raw_data = _validate_response(
+        GeminiPrepPackResponse,
+        await _generate_json(prompt),
+    )
 
     return PrepPackResponse(
-        key_risks=key_risks,
-        negotiation_points=raw_data.get("negotiation_points", []),
-        alternative_language=raw_data.get("alternative_language", []),
-        summary=raw_data.get("summary", "Preparation pack generated."),
+        key_risks=raw_data.key_risks,
+        negotiation_points=raw_data.negotiation_points,
+        alternative_language=raw_data.alternative_language,
+        summary=raw_data.summary,
         disclaimer=LEGAL_DISCLAIMER,
     )
 
@@ -249,19 +272,14 @@ async def answer_legal_question(
     """Answer a user's legal question grounded in the contract text."""
     scrub_result = scrub_pii(contract_text)
 
-    model = _get_model()
     prompt = _build_legal_question_prompt(scrub_result.cleaned_text, question)
-
-    try:
-        response = await model.generate_content_async(prompt)
-        raw_data = _parse_json_response(response.text)
-    except GeminiServiceError:
-        raise
-    except Exception as exc:
-        raise GeminiServiceError(f"Gemini API call failed: {exc}") from exc
+    raw_data = _validate_response(
+        GeminiAssistantResponse,
+        await _generate_json(prompt),
+    )
 
     return LegalAssistantResponse(
-        answer=raw_data.get("answer", "I could not confidently answer from the contract text."),
-        key_points=raw_data.get("key_points", []),
+        answer=raw_data.answer,
+        key_points=raw_data.key_points,
         disclaimer=LEGAL_DISCLAIMER,
     )

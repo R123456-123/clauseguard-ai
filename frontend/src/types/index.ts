@@ -23,6 +23,7 @@ export interface RiskResponse {
   overall_risk_level: RiskLevel;
   summary: string;
   disclaimer: string;
+  document_id?: string | null;
 }
 
 /** Response from the `/generate-prep-pack` endpoint. */
@@ -32,6 +33,7 @@ export interface PrepPackResponse {
   alternative_language: string[];
   summary: string;
   disclaimer: string;
+  document_id?: string | null;
 }
 
 export interface LegalAssistantResponse {
@@ -47,8 +49,9 @@ export interface DocumentRequest {
 }
 
 export interface LegalAssistantRequest {
-  contract_text: string;
+  contract_text?: string;
   question: string;
+  document_id?: string | null;
 }
 
 /** Maps risk levels to human-readable labels. */

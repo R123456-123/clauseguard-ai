@@ -10,6 +10,7 @@ import type { LegalAssistantResponse, RiskResponse } from "@/types";
 /* ------------------------------------------------------------------ */
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_REQUEST_TIMEOUT_MS = 60_000;
 
 const SAMPLE_QUESTIONS = [
   "What are the biggest risks in this contract?",
@@ -17,6 +18,23 @@ const SAMPLE_QUESTIONS = [
   "Is this indemnity clause unfair to me?",
   "What should I negotiate before signing?",
 ];
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(
+    () => controller.abort(),
+    API_REQUEST_TIMEOUT_MS,
+  );
+
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
 
 /* ------------------------------------------------------------------ */
 /* Skeleton loader component                                           */
@@ -112,11 +130,14 @@ export default function HomePage() {
     setAssistantQuestion("");
 
     try {
-      const response = await fetch(`${API_BASE}/api/v1/upload-contract`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contract_text: text }),
-      });
+      const response = await fetchWithTimeout(
+        `${API_BASE}/api/v1/upload-contract`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contract_text: text }),
+        },
+      );
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
@@ -169,14 +190,19 @@ export default function HomePage() {
       setError("");
 
       try {
-        const response = await fetch(`${API_BASE}/api/v1/ask-legal-question`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contract_text: contractText,
-            question: assistantQuestion,
-          }),
-        });
+        const response = await fetchWithTimeout(
+          `${API_BASE}/api/v1/ask-legal-question`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...(analysis?.document_id
+                ? { document_id: analysis.document_id }
+                : { contract_text: contractText }),
+              question: assistantQuestion,
+            }),
+          },
+        );
 
         if (!response.ok) {
           const err = await response.json().catch(() => ({}));
@@ -197,7 +223,7 @@ export default function HomePage() {
         setIsLoading(false);
       }
     },
-    [assistantQuestion, contractText],
+    [analysis?.document_id, assistantQuestion, contractText],
   );
 
   /** Reset to initial state. */
@@ -265,7 +291,7 @@ export default function HomePage() {
         </header>
 
         {/* ---- Main content ---- */}
-        <main className="mx-auto max-w-7xl px-6 py-10">
+        <main className="mx-auto max-w-7xl px-6 py-10" aria-busy={isLoading}>
           {!analysis && !isLoading && (
             <div className="mx-auto max-w-2xl animate-fade-in">
               {/* Hero */}
@@ -378,11 +404,20 @@ export default function HomePage() {
                           — need at least 50 characters
                         </span>
                       )}
+                      {directInput.length > 100000 && (
+                        <span className="text-red-400 ml-2">
+                          — maximum length exceeded
+                        </span>
+                      )}
                     </p>
 
                     <button
                       type="submit"
-                      disabled={isLoading || directInput.trim().length < 50}
+                      disabled={
+                        isLoading ||
+                        directInput.trim().length < 50 ||
+                        directInput.length > 100000
+                      }
                       className="btn-primary mt-4 w-full"
                       aria-label="Analyse pasted contract"
                     >

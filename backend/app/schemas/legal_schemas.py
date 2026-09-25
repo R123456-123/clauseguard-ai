@@ -6,7 +6,7 @@ is hardcoded into every response to satisfy the mandatory guardrail requirement.
 
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -73,6 +73,12 @@ class DocumentRequest(BaseModel):
         max_length=200,
         description="Optional — name of the party requesting analysis",
     )
+    document_id: str | None = Field(
+        default=None,
+        min_length=24,
+        max_length=64,
+        description="Optional cached scrubbed-document identifier",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -110,6 +116,10 @@ class RiskResponse(BaseModel):
         default=LEGAL_DISCLAIMER,
         description="Mandatory legal disclaimer — always included",
     )
+    document_id: str | None = Field(
+        default=None,
+        description="Identifier for reusing the scrubbed contract context",
+    )
 
 
 class PrepPackResponse(BaseModel):
@@ -136,13 +146,14 @@ class PrepPackResponse(BaseModel):
         default=LEGAL_DISCLAIMER,
         description="Mandatory legal disclaimer — always included",
     )
+    document_id: str | None = Field(default=None)
 
 
 class LegalAssistantRequest(BaseModel):
     """Payload for asking a grounded question about a contract."""
 
-    contract_text: str = Field(
-        ...,
+    contract_text: str | None = Field(
+        default=None,
         min_length=50,
         max_length=100_000,
         description="Full text content of the contract to analyse",
@@ -153,6 +164,13 @@ class LegalAssistantRequest(BaseModel):
         max_length=2000,
         description="User question about the legal contract or clauses",
     )
+    document_id: str | None = Field(default=None, min_length=24, max_length=64)
+
+    @model_validator(mode="after")
+    def require_contract_or_document(self) -> "LegalAssistantRequest":
+        if not self.contract_text and not self.document_id:
+            raise ValueError("contract_text or document_id is required")
+        return self
 
 
 class LegalAssistantResponse(BaseModel):
@@ -171,6 +189,30 @@ class LegalAssistantResponse(BaseModel):
         default=LEGAL_DISCLAIMER,
         description="Mandatory legal disclaimer — always included",
     )
+
+
+class GeminiRiskResponse(BaseModel):
+    """Schema for the raw structured risk analysis returned by Gemini."""
+
+    clauses: list[ClauseItem] = Field(default_factory=list)
+    overall_risk_level: RiskLevel
+    summary: str = Field(..., min_length=1)
+
+
+class GeminiPrepPackResponse(BaseModel):
+    """Schema for the raw structured negotiation pack returned by Gemini."""
+
+    key_risks: list[ClauseItem] = Field(default_factory=list)
+    negotiation_points: list[str] = Field(default_factory=list)
+    alternative_language: list[str] = Field(default_factory=list)
+    summary: str = Field(..., min_length=1)
+
+
+class GeminiAssistantResponse(BaseModel):
+    """Schema for the raw structured legal answer returned by Gemini."""
+
+    answer: str = Field(..., min_length=1)
+    key_points: list[str] = Field(default_factory=list)
 
 
 class ErrorResponse(BaseModel):

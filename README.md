@@ -138,6 +138,43 @@ Create a `.env` file inside the backend directory with:
 
 ```env
 GEMINI_API_KEY=your_api_key_here
+CORS_ORIGINS=http://localhost:3000,https://your-production-frontend.vercel.app
+```
+
+For deployment, set `CORS_ORIGINS` in the backend hosting platform to a
+comma-separated list of trusted frontend origins. Do not use `*` in production.
+
+Optional backend controls:
+
+```env
+RATE_LIMIT_REQUESTS=30
+RATE_LIMIT_WINDOW_SECONDS=60
+CONTEXT_CACHE_TTL_SECONDS=900
+CONTEXT_CACHE_MAX_ENTRIES=100
+```
+
+The backend returns a short-lived document ID after analysis. The frontend uses
+that ID for follow-up legal questions so the scrubbed contract is not uploaded
+again. The cache is intentionally bounded and in-memory for the hackathon
+deployment; use Redis or another shared store when running multiple backend
+instances.
+
+### Quality checks
+
+```bash
+# Backend tests
+cd backend
+python -m pytest -q
+
+# Frontend lint, build, and browser smoke tests
+cd ../frontend
+npm run lint
+npm run build
+npm run test:e2e
+
+# Simple backend load check
+cd ../backend
+python tools/load_test.py --url http://localhost:8000/health --requests 50 --concurrency 10
 ```
 
 ## Important note
