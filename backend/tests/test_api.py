@@ -210,9 +210,42 @@ class TestUploadContract:
 # 4. Prep-pack endpoint
 # ===========================================================================
 
+_MOCK_PREP_PACK = PrepPackResponse(
+    key_risks=[
+        ClauseItem(
+            clause_text="Termination may occur with 7 days written notice",
+            clause_type="Termination",
+            risk_level=RiskLevel.MEDIUM,
+            risk_explanation="7-day termination notice is very short.",
+            recommendation="Request a minimum 30-day notice period.",
+        ),
+    ],
+    negotiation_points=["Extend termination notice", "Cap liability"],
+    alternative_language=["Either party may terminate with 30 days written notice."],
+    summary="Focus on extending the termination window.",
+    disclaimer=LEGAL_DISCLAIMER,
+)
 
 class TestGeneratePrepPack:
     """Integration tests for POST /api/v1/generate-prep-pack."""
+
+    @patch(
+        "app.api.routes.generate_prep_pack",
+        new_callable=AsyncMock,
+        return_value=_MOCK_PREP_PACK,
+    )
+    def test_successful_prep_pack(self, mock_generate: AsyncMock) -> None:
+        """A valid contract should return a prep pack."""
+        response = client.post(
+            "/api/v1/generate-prep-pack",
+            json={"contract_text": _SAMPLE_CONTRACT},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "negotiation_points" in data
+        assert "alternative_language" in data
+        assert data["disclaimer"] == LEGAL_DISCLAIMER
+        mock_generate.assert_called_once_with(_SAMPLE_CONTRACT)
 
     def test_rejects_short_contract(self) -> None:
         """Contract text shorter than 50 chars should return 422."""
@@ -220,5 +253,17 @@ class TestGeneratePrepPack:
             "/api/v1/generate-prep-pack",
             json={"contract_text": "Short."},
         )
-
         assert response.status_code == 422
+
+    @patch(
+        "app.api.routes.generate_prep_pack",
+        new_callable=AsyncMock,
+        side_effect=Exception("API Error"),
+    )
+    def test_handles_service_failure(self, mock_generate: AsyncMock) -> None:
+        """Service failures should return 500."""
+        response = client.post(
+            "/api/v1/generate-prep-pack",
+            json={"contract_text": _SAMPLE_CONTRACT},
+        )
+        assert response.status_code == 500

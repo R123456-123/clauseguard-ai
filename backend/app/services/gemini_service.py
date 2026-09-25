@@ -37,6 +37,9 @@ class GeminiServiceError(Exception):
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+import functools
+
+@functools.lru_cache(maxsize=1)
 def _get_model() -> genai.GenerativeModel:
     """Configure the Gemini client and return a ``GenerativeModel`` instance.
 
