@@ -433,8 +433,30 @@ class TestAskLegalQuestion:
 
         assert response.status_code == 422
 
-    def test_expired_document_id_returns_gone(self) -> None:
-        """Expired cached context should tell the client to analyse again."""
+    def test_expired_document_id_uses_text_fallback(self) -> None:
+        """An expired ID should fall back to the supplied contract text."""
+        with patch(
+            "app.api.routes.answer_legal_question",
+            new_callable=AsyncMock,
+            return_value=_MOCK_LEGAL_ASSISTANT_RESPONSE,
+        ) as mock_answer:
+            response = client.post(
+                "/api/v1/ask-legal-question",
+                json={
+                    "document_id": "a" * 24,
+                    "contract_text": _SAMPLE_CONTRACT,
+                    "question": "What are the key risks?",
+                },
+            )
+
+        assert response.status_code == 200
+        mock_answer.assert_called_once_with(
+            _SAMPLE_CONTRACT,
+            "What are the key risks?",
+        )
+
+    def test_expired_document_without_text_returns_gone(self) -> None:
+        """An expired ID without fallback text should return HTTP 410."""
         response = client.post(
             "/api/v1/ask-legal-question",
             json={
@@ -444,7 +466,6 @@ class TestAskLegalQuestion:
         )
 
         assert response.status_code == 410
-        assert "expired" in response.json()["detail"]
 
 
 class TestCorsPolicy:

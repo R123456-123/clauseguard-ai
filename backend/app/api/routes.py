@@ -114,8 +114,10 @@ async def ask_legal_question(
     try:
         contract_text = request.contract_text
         if request.document_id:
-            contract_text = get_cached_context(request.document_id)
-            if contract_text is None:
+            cached_context = get_cached_context(request.document_id)
+            if cached_context is not None:
+                contract_text = cached_context
+            elif not contract_text:
                 raise HTTPException(
                     status_code=410,
                     detail="The cached contract context has expired. Please analyse the contract again.",

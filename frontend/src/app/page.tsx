@@ -198,9 +198,10 @@ export default function HomePage() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              contract_text: contractText,
               ...(analysis?.document_id
                 ? { document_id: analysis.document_id }
-                : { contract_text: contractText }),
+                : {}),
               question: assistantQuestion,
             }),
           },
