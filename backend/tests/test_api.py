@@ -433,6 +433,19 @@ class TestAskLegalQuestion:
 
         assert response.status_code == 422
 
+    def test_expired_document_id_returns_gone(self) -> None:
+        """Expired cached context should tell the client to analyse again."""
+        response = client.post(
+            "/api/v1/ask-legal-question",
+            json={
+                "document_id": "a" * 24,
+                "question": "What are the key risks?",
+            },
+        )
+
+        assert response.status_code == 410
+        assert "expired" in response.json()["detail"]
+
 
 class TestCorsPolicy:
     """Verify only configured frontend origins receive CORS permission."""

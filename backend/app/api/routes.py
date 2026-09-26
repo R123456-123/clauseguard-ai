@@ -121,6 +121,8 @@ async def ask_legal_question(
                     detail="The cached contract context has expired. Please analyse the contract again.",
                 )
         return await answer_legal_question(contract_text or "", request.question)
+    except HTTPException:
+        raise
     except GeminiServiceError as exc:
         logger.warning("Legal assistant service failure: %s", exc)
         raise HTTPException(

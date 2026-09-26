@@ -9,7 +9,9 @@ import type { LegalAssistantResponse, RiskResponse } from "@/types";
 /* Constants                                                           */
 /* ------------------------------------------------------------------ */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE = (
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
+).replace(/\/+$/, "");
 const API_REQUEST_TIMEOUT_MS = 60_000;
 
 const SAMPLE_QUESTIONS = [
